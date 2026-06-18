@@ -24,7 +24,7 @@ def load_config():
 # ─── Find GGUF models ───────────────────────────────────
 def find_models():
     models = []
-    for root, dirs, files in os.walk(GGUF_DIR):
+    for root, dirs, files in os.walk(GGUF_DIR, followlinks=True):
         # Skip hidden dirs
         dirs[:] = [d for d in dirs if not d.startswith('.')]
         for f in sorted(files):

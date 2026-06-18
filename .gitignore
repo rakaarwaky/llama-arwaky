@@ -2,9 +2,13 @@
 
 # GGUF model files (terlalu besar untuk GitHub)
 *.gguf
+model/
 
 # llama.cpp binary build (llama-b9656/)
 llama-b9656/
+
+# GGUF symlink to SharedData (local machine only)
+GGUF
 
 # Python cache
 __pycache__/
