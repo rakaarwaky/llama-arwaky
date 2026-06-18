@@ -14,7 +14,7 @@ SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 CONFIG_DIR   = os.path.join(SCRIPT_DIR, "config")
 DEFAULT_CFG  = os.path.join(CONFIG_DIR, "default.yaml")
 LEGACY_CFG   = os.path.join(SCRIPT_DIR, "config.yaml")   # backward compat
-LLAMA_SERVER = os.path.expanduser("~/App/llama-cpp/llama-b9656/llama-server")
+LLAMA_SERVER = os.path.join(SCRIPT_DIR, "llama-b9656", "llama-server")
 
 # ─── Model → config mapping ──────────────────────────────
 # Keys are substrings matched against the model's relative path (case-insensitive)
@@ -162,8 +162,9 @@ def launch_server(cfg, model_path, cfg_name="default.yaml"):
     # Env
     env = os.environ.copy()
     env['HSA_OVERRIDE_GFX_VERSION'] = '10.3.0'
+    lib_dir = os.path.join(SCRIPT_DIR, "llama-b9656")
     env['LD_LIBRARY_PATH'] = (
-        '/home/raka/App/llama-cpp/llama-b9656:/opt/rocm-7.2.4/lib:'
+        f'{lib_dir}:/opt/rocm-7.2.4/lib:'
         + env.get('LD_LIBRARY_PATH', '')
     )
 
