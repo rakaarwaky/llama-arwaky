@@ -1,0 +1,29 @@
+# ═══════════════════════════════════════════════════════════
+# Config: gemma-4-12B-it-QAT (lmstudio-community)
+# Model : GGUF/lmstudio-community/gemma-4-12B-it-QAT-GGUF/
+#         gemma-4-12B-it-QAT-Q4_0.gguf
+# ═══════════════════════════════════════════════════════════
+# QAT (Quantization-Aware Training) Q4_0 — excellent quality at 4-bit
+# Multimodal: YES — mmproj-gemma-4-12B-it-QAT-BF16.gguf
+
+server:
+  host: 127.0.0.1
+  port: 8080
+  ngl: 999
+  ctx: 8192                  # Gemma-4 supports long context
+  threads: 8
+  threads_batch: 8
+  temp: 0.7
+  top_k: 40
+  top_p: 0.95
+  no_kv_offload: true
+  flash_attn: true
+  cache_type_k: q4_0
+  cache_type_v: q4_0
+  reasoning_budget: 0
+
+multimodal:
+  mmproj: auto               # auto-picks mmproj-gemma-4-12B-it-QAT-BF16.gguf
+
+ui:
+  max_name_len: 60

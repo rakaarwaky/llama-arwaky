@@ -1,0 +1,30 @@
+# ═══════════════════════════════════════════════════════════
+# Config: Qwopus3.5-9B-Coder-MTP (Jackwrong)
+# Model : GGUF/Jackwrong/Qwopus3.5-9B-Coder-MTP-Q6_K/
+#         Qwopus3.5-9B-Coder-MTP-Q6_K.gguf
+# ═══════════════════════════════════════════════════════════
+# Code-focused model — Q6_K for high precision
+# Multimodal: NO
+# Tip: Lower temp for deterministic code generation
+
+server:
+  host: 127.0.0.1
+  port: 8080
+  ngl: 999
+  ctx: 16384                 # Coders need long context for large files
+  threads: 8
+  threads_batch: 8
+  temp: 0.3                  # Low temp — more deterministic for code
+  top_k: 20
+  top_p: 0.90
+  no_kv_offload: true
+  flash_attn: true
+  cache_type_k: q8_0         # Higher precision KV cache for code quality
+  cache_type_v: q8_0
+  reasoning_budget: 0
+
+multimodal:
+  mmproj: none               # No vision for this model
+
+ui:
+  max_name_len: 60

@@ -1,0 +1,30 @@
+# ═══════════════════════════════════════════════════════════
+# Config: Huihui-gemma-4-12B-it-abliterated (huhui)
+# Model : GGUF/huhui/huhui-gemma-4-12b/
+#         Huihui-gemma-4-12B-it-abliterated.Q4_K_S.gguf
+# ═══════════════════════════════════════════════════════════
+# Abliterated variant — no refusal training
+# Quantization: Q4_K_S — small, memory-efficient
+# Multimodal: YES — mmproj-Q8_0 included
+
+server:
+  host: 127.0.0.1
+  port: 8080
+  ngl: 999
+  ctx: 8192
+  threads: 8
+  threads_batch: 8
+  temp: 0.75                 # Slightly higher temp for abliterated models
+  top_k: 40
+  top_p: 0.95
+  no_kv_offload: true
+  flash_attn: true
+  cache_type_k: q4_0
+  cache_type_v: q4_0
+  reasoning_budget: 0
+
+multimodal:
+  mmproj: auto               # auto-picks mmproj-Q8_0.gguf
+
+ui:
+  max_name_len: 60

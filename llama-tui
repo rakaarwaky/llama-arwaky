@@ -1,36 +1,82 @@
 #!/usr/bin/env python3
 """
 llama-tui — Simple GGUF model picker + llama-server launcher
-★(◕‿◕)ノ
+★(◕‿◕)ノ  with per-model config support
 """
 
 import os
 import sys
 import subprocess
-import signal
-import time
 import yaml
 
 # ─── Paths ──────────────────────────────────────────────
-GGUF_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(GGUF_DIR, "config.yaml")
+SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
+CONFIG_DIR   = os.path.join(SCRIPT_DIR, "config")
+DEFAULT_CFG  = os.path.join(CONFIG_DIR, "default.yaml")
+LEGACY_CFG   = os.path.join(SCRIPT_DIR, "config.yaml")   # backward compat
 LLAMA_SERVER = os.path.expanduser("~/App/llama-cpp/llama-b9656/llama-server")
 
-# ─── Load config ────────────────────────────────────────
-def load_config():
-    with open(CONFIG_PATH) as f:
-        return yaml.safe_load(f)
+# ─── Model → config mapping ──────────────────────────────
+# Keys are substrings matched against the model's relative path (case-insensitive)
+# First match wins. Falls back to default.yaml if no match.
+MODEL_CONFIG_MAP = [
+    # Qwopus coder — match first (specific)
+    ("qwopus",                              "qwopus-coder-9b.yaml"),
+    ("jackwrong",                           "qwopus-coder-9b.yaml"),
+
+    # MiniCPM
+    ("minicpm",                             "minicpm-v4.yaml"),
+
+    # Huihui-ai QAT abliterated (huihui-ai folder) — more specific first
+    ("huihui-ai",                           "gemma4-huihui-qat-abliterated.yaml"),
+    ("huihui-gemma-4-12b-it-qat",          "gemma4-huihui-qat-abliterated.yaml"),
+
+    # Huhui (huhui folder) — abliterated Q4_K_S
+    ("huhui",                               "gemma4-huhui-abliterated.yaml"),
+
+    # lmstudio-community gemma-4 QAT
+    ("lmstudio-community",                  "gemma4-lmstudio-qat.yaml"),
+    ("gemma-4-12b-it-qat",                 "gemma4-lmstudio-qat.yaml"),
+]
+
+# ─── Config loader ──────────────────────────────────────
+def load_default_config():
+    """Load default.yaml, fallback to legacy config.yaml."""
+    if os.path.exists(DEFAULT_CFG):
+        with open(DEFAULT_CFG) as f:
+            return yaml.safe_load(f)
+    if os.path.exists(LEGACY_CFG):
+        with open(LEGACY_CFG) as f:
+            return yaml.safe_load(f)
+    raise FileNotFoundError("No config found! Create config/default.yaml")
+
+def load_model_config(model_rel_path):
+    """
+    Find the best matching config for a model path.
+    Returns (config_dict, config_filename).
+    """
+    rel_lower = model_rel_path.lower().replace("\\", "/")
+
+    for keyword, cfg_file in MODEL_CONFIG_MAP:
+        if keyword.lower() in rel_lower:
+            cfg_path = os.path.join(CONFIG_DIR, cfg_file)
+            if os.path.exists(cfg_path):
+                with open(cfg_path) as f:
+                    return yaml.safe_load(f), cfg_file
+
+    # Fallback to default
+    return load_default_config(), "default.yaml"
 
 # ─── Find GGUF models ───────────────────────────────────
 def find_models():
     models = []
-    for root, dirs, files in os.walk(GGUF_DIR, followlinks=True):
-        # Skip hidden dirs
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
+    for root, dirs, files in os.walk(SCRIPT_DIR, followlinks=True):
+        # Skip hidden dirs and the config dir itself
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != 'config']
         for f in sorted(files):
             if f.endswith('.gguf') and not f.startswith('mmproj'):
                 path = os.path.join(root, f)
-                rel = os.path.relpath(path, GGUF_DIR)
+                rel  = os.path.relpath(path, SCRIPT_DIR)
                 size_gb = os.path.getsize(path) / (1024**3)
                 models.append((path, rel, size_gb))
     return models
@@ -50,15 +96,17 @@ def print_header():
     print("║       ★ llama-tui ★  b9656          ║")
     print("║    GGUF Model Picker + Server        ║")
     print("╚══════════════════════════════════════╝")
-    print(f"  📁 {GGUF_DIR}\n")
+    print(f"  📁 {SCRIPT_DIR}\n")
 
 def show_menu(models):
-    print(f"  {'#':<3} {'Model':<55} {'Size':>8}")
-    print(f"  {'─'*3} {'─'*55} {'─'*8}")
+    print(f"  {'#':<3} {'Model':<52} {'Size':>8}  {'Config'}")
+    print(f"  {'─'*3} {'─'*52} {'─'*8}  {'─'*28}")
     for i, (path, rel, size) in enumerate(models, 1):
-        name = rel[:60]
-        print(f"  {i:<3} {name:<55} {size:>6.1f}GB")
-    print(f"  {'─'*3} {'─'*55} {'─'*8}")
+        _, cfg_file = load_model_config(rel)
+        name = rel[:52]
+        cfg_label = cfg_file.replace(".yaml", "")
+        print(f"  {i:<3} {name:<52} {size:>6.1f}GB  {cfg_label}")
+    print(f"  {'─'*3} {'─'*52} {'─'*8}  {'─'*28}")
     print(f"\n  {len(models)+1}. ❌  Exit\n")
 
 def get_choice(max_choice):
@@ -75,7 +123,7 @@ def get_choice(max_choice):
         print(f"  ⚠️  Masukin angka 1-{max_choice} ya~!")
 
 # ─── Launch server ──────────────────────────────────────
-def launch_server(cfg, model_path):
+def launch_server(cfg, model_path, cfg_name="default.yaml"):
     scfg = cfg['server']
 
     # Build args
@@ -101,13 +149,12 @@ def launch_server(cfg, model_path):
         args += ["--cache-type-k", scfg['cache_type_k']]
     if scfg.get('cache_type_v'):
         args += ["--cache-type-v", scfg['cache_type_v']]
-
     if scfg.get('reasoning_budget') is not None:
         args += ["--reasoning-budget", str(scfg['reasoning_budget'])]
 
     # Auto mmproj
     mmproj = find_mmproj(model_path)
-    mcfg = cfg.get('multimodal', {})
+    mcfg   = cfg.get('multimodal', {})
     if mmproj and mcfg.get('mmproj') == 'auto':
         args += ["--mmproj", mmproj]
         print(f"  🖼️  Detected mmproj: {os.path.basename(mmproj)}")
@@ -115,16 +162,23 @@ def launch_server(cfg, model_path):
     # Env
     env = os.environ.copy()
     env['HSA_OVERRIDE_GFX_VERSION'] = '10.3.0'
-    env['LD_LIBRARY_PATH'] = '/home/raka/App/llama-cpp/llama-b9656:/opt/rocm-7.2.4/lib:' + env.get('LD_LIBRARY_PATH', '')
+    env['LD_LIBRARY_PATH'] = (
+        '/home/raka/App/llama-cpp/llama-b9656:/opt/rocm-7.2.4/lib:'
+        + env.get('LD_LIBRARY_PATH', '')
+    )
 
-    model_name = os.path.basename(os.path.dirname(model_path)) + "/" + os.path.basename(model_path)
+    model_name = (
+        os.path.basename(os.path.dirname(model_path))
+        + "/" + os.path.basename(model_path)
+    )
 
-    print(f"\n  ╔══ ★ Server Starting ★ ═══════════════╗")
+    print(f"\n  ╔══ ★ Server Starting ★ ════════════════╗")
     print(f"  ║  Model : {model_name:<35} ║")
-    print(f"  ║  GPU   : RX 6800 XT (16GB ROCm)     ║")
-    print(f"  ║  ngl   : {scfg['ngl']:<3} | ctx: {scfg['ctx']:<5}            ║")
-    print(f"  ║  Port  : {scfg['port']:<4}                         ║")
-    print(f"  ╚═══════════════════════════════════════╝")
+    print(f"  ║  Config: {cfg_name:<35} ║")
+    print(f"  ║  GPU   : RX 6800 XT (16GB ROCm)      ║")
+    print(f"  ║  ngl   : {scfg['ngl']:<3} | ctx: {scfg['ctx']:<6}             ║")
+    print(f"  ║  temp  : {scfg['temp']:<5} | port: {scfg['port']:<4}            ║")
+    print(f"  ╚════════════════════════════════════════╝")
     print(f"\n  🌐 http://{scfg['host']}:{scfg['port']}/v1/chat/completions")
     print(f"  📡 http://{scfg['host']}:{scfg['port']}/metrics")
     print(f"\n  Press Ctrl+C to stop server\n")
@@ -141,7 +195,6 @@ def launch_server(cfg, model_path):
             bufsize=1,
         )
 
-        # Stream output
         for line in proc.stdout:
             print(f"  {line}", end='')
             sys.stdout.flush()
@@ -157,15 +210,13 @@ def launch_server(cfg, model_path):
 
 # ─── Main ───────────────────────────────────────────────
 def main():
-    cfg = load_config()
-
     while True:
         models = find_models()
 
         if not models:
             print_header()
             print("  ❌  No GGUF models found in:\n")
-            print(f"     {GGUF_DIR}")
+            print(f"     {SCRIPT_DIR}")
             print("\n  Taruh model .gguf di folder ini, lalu jalankan ulang~!\n")
             sys.exit(1)
 
@@ -177,9 +228,9 @@ def main():
             print("\n  ★ Sampai jumpa~! ヽ(>∀<☆)ノ\n")
             sys.exit(0)
 
-        model_path = models[choice - 1][0]
-        model_rel = models[choice - 1][1]
-        launch_server(cfg, model_path)
+        model_path, model_rel, _ = models[choice - 1]
+        cfg, cfg_name = load_model_config(model_rel)
+        launch_server(cfg, model_path, cfg_name)
 
         # After server stops, prompt to go back to menu
         print("\n  🔄 Back to model list? (y/n): ", end='')
