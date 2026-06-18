@@ -5,27 +5,20 @@
 # ═══════════════════════════════════════════════════════════
 # Multimodal vision-language model — Q6_K high precision
 # Multimodal: YES — mmproj-model-f16.gguf
-# Note: MiniCPM-V uses a different vision architecture,
+# Note: MiniCPM-V uses different vision architecture,
 #       keep ctx lower than Gemma models
+# ═══════════════════════════════════════════════════════════
+# Only OVERRIDES from default.yaml are listed here
+# ═══════════════════════════════════════════════════════════
 
-server:
-  host: 127.0.0.1
-  port: 8080
-  ngl: 999
+model:
   ctx: 4096
-  threads: 8
-  threads_batch: 8
-  temp: 0.7
-  top_k: 40
-  top_p: 0.95
-  no_kv_offload: true
-  flash_attn: true
-  cache_type_k: q4_0
-  cache_type_v: q4_0
-  reasoning_budget: 0
 
 multimodal:
-  mmproj: auto               # auto-picks mmproj-model-f16.gguf
+  mmproj: auto                    # auto-picks mmproj-model-f16.gguf
+
+reasoning:
+  reasoning_budget: 0
 
 ui:
   max_name_len: 60

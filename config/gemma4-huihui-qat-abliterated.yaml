@@ -6,25 +6,258 @@
 # QAT + abliterated — best quality + no refusals
 # Quantization: Q4_K (medium precision 4-bit)
 # Multimodal: YES — mmproj-model-bf16.gguf
+# ═══════════════════════════════════════════════════════════
 
+# ── Server Connection ──────────────────────────────────────────
 server:
   host: 127.0.0.1
   port: 8080
-  ngl: 999
-  ctx: 8192
-  threads: 8
-  threads_batch: 8
-  temp: 0.75
-  top_k: 40
-  top_p: 0.95
-  no_kv_offload: true
-  flash_attn: true
-  cache_type_k: q4_0
-  cache_type_v: q4_0
-  reasoning_budget: 0
+  api_prefix: ""                    # API path prefix (e.g., "/v1")
+  reuse_port: false                 # Allow multiple sockets on same port
+  timeout: 3600                     # Read/write timeout (seconds)
+  sse_ping_interval: 30             # SSE ping interval (-1 = disabled)
+  threads_http: -1                  # HTTP request threads (-1 = auto)
 
+# ── Model Loading ──────────────────────────────────────────────
+model:
+  ngl: 999                          # GPU layers (999 = all, "auto", or number)
+  main_gpu: 0                       # Primary GPU index
+  split_mode: "layer"               # none | layer | row | tensor
+  tensor_split: ""                  # Comma-separated GPU split ratios (e.g., "3,1")
+  ctx: 8192                         # Context size (0 = from model) [OVERRIDE: 8192]
+  batch_size: 2048                  # Logical max batch size
+  ubatch_size: 512                  # Physical max batch size
+  mlock: true                       # Lock model in RAM (prevent swap)
+  mmap: true                        # Memory-map model file
+  no_host: false                    # Bypass host buffer
+  checkpoint: false                 # Use checkpoint loading (slow load, less RAM)
+  rpc_servers: ""                   # Comma-separated RPC servers (host:port)
+
+# ── CPU Affinity & Threading ───────────────────────────────────
+cpu:
+  threads: 8                        # Generation threads (-1 = auto)
+  threads_batch: 8                  # Batch/prompt threads (-1 = same as threads)
+  cpu_mask: ""                      # CPU affinity mask (hex)
+  cpu_range: ""                     # CPU range lo-hi (e.g., "0-7")
+  cpu_strict: false                 # Strict CPU placement
+  prio: 0                           # Process priority: -1 low, 0 normal, 1 medium, 2 high, 3 realtime
+  poll: 50                          # Polling level 0-100
+  cpu_mask_batch: ""                # Batch CPU affinity mask
+  cpu_range_batch: ""               # Batch CPU range
+  cpu_strict_batch: false           # Strict batch CPU placement
+  prio_batch: 0                     # Batch process priority
+  poll_batch: -1                    # Batch polling (-1 = same as poll)
+  numa: ""                          # NUMA strategy: distribute | isolate | numactl
+
+# ── KV Cache ───────────────────────────────────────────────────
+kv_cache:
+  no_kv_offload: true               # Keep KV on CPU (saves VRAM)
+  cache_type_k: "q4_0"              # K cache type: f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1
+  cache_type_v: "q4_0"              # V cache type: same options
+  cache_type_k_draft: "f16"         # Draft model K cache type
+  cache_type_v_draft: "f16"         # Draft model V cache type
+  defrag_thold: 0.1                 # Defragmentation threshold (deprecated)
+  cache_prompt: true                # Enable prompt caching
+  cache_reuse: 0                    # Min chunk size for KV reuse (0 = disabled)
+  rope_scaling: "none"              # none | linear | yarn
+  rope_scale: 1.0                   # RoPE scaling factor
+  rope_freq_base: 0.0               # RoPE base frequency (0 = from model)
+  rope_freq_scale: 1.0              # RoPE frequency scale (1/N expansion)
+  yarn_orig_ctx: 0                  # YaRN original context (0 = model training ctx)
+  yarn_ext_factor: -1.0             # YaRN extrapolation factor
+  yarn_attn_factor: -1.0            # YaRN attention scale factor
+  yarn_beta_slow: -1.0              # YaRN high correction dim
+  yarn_beta_fast: -1.0              # YaRN low correction dim
+
+# ── Flash Attention & Memory ───────────────────────────────────
+memory:
+  flash_attn: true                  # Flash Attention: on | off | auto
+  no_mmap: false                    # Disable mmap
+  direct_io: false                  # Use DirectIO
+  op_offload: true                  # Offload host ops to device
+  mmproj_offload: true              # Offload multimodal projector to GPU
+  repack: true                      # Enable weight repacking
+  fit: true                         # Auto-adjust args to fit VRAM
+  fit_target: 1024                  # VRAM margin per device (MiB) for --fit
+  fit_ctx: 4096                     # Min ctx size for --fit
+
+# ── Quantization Overrides ─────────────────────────────────────
+quantization:
+  override_tensor: ""               # Tensor buffer type overrides (pattern=type,...)
+  cpu_moe: false                    # Keep all MoE weights on CPU
+  n_cpu_moe: 0                      # Keep first N MoE layers on CPU
+
+# ── Sampling Parameters ────────────────────────────────────────
+sampling:
+  temp: 0.75                        # Temperature (0 = greedy) [OVERRIDE: 0.75 for abliterated]
+  top_k: 40                         # Top-K (0 = disabled)
+  top_p: 0.95                       # Top-P (1 = disabled)
+  min_p: 0.05                       # Min-P (0 = disabled)
+  top_n_sigma: -1.0                 # Top-N-Sigma (-1 = disabled)
+  typical_p: 1.0                    # Typical sampling (1 = disabled)
+  xtc_probability: 0.0              # XTC probability
+  xtc_threshold: 0.1                # XTC threshold
+  repeat_last_n: 64                 # Repetition penalty window (0 = disabled, -1 = ctx)
+  repeat_penalty: 1.0               # Repetition penalty (1 = disabled)
+  presence_penalty: 0.0             # Presence penalty (0 = disabled)
+  frequency_penalty: 0.0            # Frequency penalty (0 = disabled)
+  dry_multiplier: 0.0               # DRY multiplier (0 = disabled)
+  dry_base: 1.75                    # DRY base value
+  dry_allowed_length: 2             # DRY allowed length
+  dry_penalty_last_n: -1            # DRY penalty window (-1 = ctx)
+  dry_sequence_breaker: ""          # DRY sequence breakers ("none" = none)
+  mirostat: 0                       # Mirostat: 0=off, 1=Mirostat, 2=Mirostat 2.0
+  mirostat_lr: 0.1                  # Mirostat learning rate (eta)
+  mirostat_ent: 5.0                 # Mirostat target entropy (tau)
+  adaptive_target: -1.0             # Adaptive-p target prob (-1 = disabled)
+  adaptive_decay: 0.9               # Adaptive-p decay rate
+  dynatemp_range: 0.0               # Dynamic temp range (0 = disabled)
+  dynatemp_exp: 1.0                 # Dynamic temp exponent
+
+# ── Grammar & Constrained Generation ───────────────────────────
+constrained:
+  samplers: ""                      # Sampler sequence (default: penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature)
+  sampler_seq: ""                   # Simplified sampler seq (default: edskypmxt)
+  seed: -1                          # RNG seed (-1 = random)
+  ignore_eos: false                 # Ignore EOS token
+  logit_bias: ""                    # Token bias: "token_id(+/-)bias,..."
+  grammar: ""                       # BNF grammar string
+  grammar_file: ""                  # Path to grammar file
+  json_schema: ""                   # JSON schema string
+  json_schema_file: ""              # Path to JSON schema file
+  backend_sampling: false           # Enable backend sampling (experimental)
+
+# ── LoRA & Control Vectors ─────────────────────────────────────
+adapters:
+  lora: ""                          # LoRA adapter path(s), comma-separated
+  lora_scaled: ""                   # LoRA with scaling: "path:scale,..."
+  lora_init_without_apply: false    # Load LoRA without applying
+  control_vector: ""                # Control vector path(s), comma-separated
+  control_vector_scaled: ""         # Control vector with scaling: "path:scale,..."
+  control_vector_layer_range: ""    # Layer range for control vector: "start end"
+
+# ── Speculative Decoding (Draft Model) ─────────────────────────
+speculative:
+  draft_hf_repo: ""                 # HF repo for draft model
+  draft_model: ""                   # Draft model path
+  draft_ngl: 999                    # Draft GPU layers
+  draft_threads: -1                 # Draft threads (-1 = same as main)
+  draft_cache_type_k: "f16"         # Draft K cache type
+  draft_cache_type_v: "f16"         # Draft V cache type
+
+# ── Multimodal ─────────────────────────────────────────────────
 multimodal:
-  mmproj: auto               # auto-picks mmproj-model-bf16.gguf
+  mmproj: "auto"                    # mmproj path: auto | none | path [OVERRIDE: auto]
+  image_min_tokens: 0               # Min image tokens (0 = from model)
+  image_max_tokens: 0               # Max image tokens (0 = from model)
+  mtmd_batch_max_tokens: 1024       # Max image tokens per batch
 
+# ── Reasoning / Thinking ───────────────────────────────────────
+reasoning:
+  reasoning: "auto"                 # on | off | auto
+  reasoning_format: "auto"          # none | deepseek | deepseek-legacy | auto
+  reasoning_budget: 0               # Token budget for thinking (-1 = unlimited, 0 = immediate end) [OVERRIDE: 0]
+  reasoning_budget_message: ""      # Message when budget exhausted
+
+# ── Chat Template ──────────────────────────────────────────────
+chat:
+  chat_template: ""                 # Custom jinja template name or string
+  chat_template_file: ""            # Custom jinja template file
+  chat_template_kwargs: ""          # JSON string for template kwargs
+  jinja: true                       # Use jinja template engine
+  skip_chat_parsing: false          # Force pure content parser
+  prefill_assistant: true           # Prefill assistant if last msg is assistant
+
+# ── Server Features & Endpoints ────────────────────────────────
+features:
+  ui: true                          # Enable Web UI
+  ui_config: ""                     # UI config JSON string
+  ui_config_file: ""                # UI config JSON file
+  ui_mcp_proxy: false               # Enable MCP CORS proxy (experimental)
+  tools: ""                         # Built-in tools: "all" or comma-separated (read_file,file_glob_search,grep_search,exec_shell_command,write_file,edit_file,apply_diff,get_datetime)
+  embedding: false                  # Embedding-only mode
+  reranking: false                  # Enable reranking endpoint
+  metrics: false                    # Prometheus metrics endpoint
+  props: false                      # Enable POST /props endpoint
+  slots: true                       # Expose slots monitoring endpoint
+  slot_save_path: ""                # Path to save slot KV cache
+  cache_prompt: true                # Enable prompt caching (duplicate, see kv_cache)
+  media_path: ""                    # Local media directory for file:// URLs
+  models_dir: ""                    # Models directory for router server
+  models_preset: ""                 # Model presets INI for router
+  models_max: 4                     # Max models simultaneously (router)
+  models_autoload: true             # Auto-load models (router)
+
+# ── Authentication & SSL ───────────────────────────────────────
+auth:
+  api_key: ""                       # API key(s), comma-separated
+  api_key_file: ""                  # Path to API keys file
+  ssl_key_file: ""                  # SSL private key PEM
+  ssl_cert_file: ""                 # SSL certificate PEM
+
+# ── Logging ────────────────────────────────────────────────────
+logging:
+  log_disable: false                # Disable all logging
+  log_file: ""                      # Log to file
+  log_colors: "auto"                # on | off | auto
+  verbosity: 3                      # 0=generic, 1=error, 2=warn, 3=info, 4=trace, 5=debug
+  log_prefix: true                  # Enable log prefix
+  log_timestamps: true              # Enable timestamps
+  log_prompts_dir: ""               # Log prompts to directory (debug)
+
+# ── Performance & Diagnostics ──────────────────────────────────
+performance:
+  perf: false                       # Enable internal performance timings
+  check_tensors: false              # Check model tensors for invalid values
+  no_perf: false                    # Disable perf (explicit)
+
+# ── Slot & Context Management ──────────────────────────────────
+slots:
+  slot_prompt_similarity: 0.1       # Prompt similarity threshold for slot reuse (0 = disabled)
+  keep: 0                           # Tokens to keep from initial prompt (0 = none, -1 = all)
+  swa_full: false                   # Use full-size SWA cache
+  n_predict: -1                     # Max tokens to predict (-1 = unlimited)
+
+# ── Embeddings ──────────────────────────────────────────────────
+embeddings:
+  embd_normalize: 2                 # Embedding normalization: -1=none, 0=maxabs, 1=taxicab, 2=euclidean, >2=p-norm
+
+# ── TTS / Audio ────────────────────────────────────────────────
+tts:
+  model_vocoder: ""                 # Vocoder model for audio generation
+  tts_use_guide_tokens: false       # Use guide tokens for TTS
+
+# ── FIM / Code Completion Defaults ─────────────────────────────
+fim:
+  fim_qwen_1_5b_default: false
+  fim_qwen_3b_default: false
+  fim_qwen_7b_default: false
+  fim_qwen_7b_spec: false
+  fim_qwen_14b_spec: false
+  fim_qwen_30b_default: false
+  gpt_oss_20b_default: false
+  gpt_oss_120b_default: false
+  vision_gemma_4b_default: false
+  vision_gemma_12b_default: false
+  spec_default: false
+
+# ── Model Aliases & Tags ───────────────────────────────────────
+identity:
+  alias: ""                         # Model aliases, comma-separated (for API)
+  tags: ""                          # Model tags, comma-separated (informational)
+
+# ── Sleep / Idle ───────────────────────────────────────────────
+sleep:
+  sleep_idle_seconds: -1            # Sleep after idle seconds (-1 = disabled)
+
+# ── Offline ────────────────────────────────────────────────────
+network:
+  offline: false                    # Offline mode (no network access)
+
+# ── Override KV Metadata ───────────────────────────────────────
+override:
+  override_kv: ""                   # Metadata overrides: KEY=TYPE:VALUE,...
+
+# ── UI Display (llama-tui specific) ────────────────────────────
 ui:
   max_name_len: 60
