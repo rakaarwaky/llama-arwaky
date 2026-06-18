@@ -24,7 +24,7 @@ model:
   main_gpu: 0                       # Primary GPU index
   split_mode: "layer"               # none | layer | row | tensor
   tensor_split: ""                  # Comma-separated GPU split ratios (e.g., "3,1")
-  ctx: 16384                        # Context size (0 = from model) [OVERRIDE: 16384 for code]
+  ctx: 200000                        # Context size (0 = from model) 
   batch_size: 2048                  # Logical max batch size
   ubatch_size: 512                  # Physical max batch size
   mlock: true                       # Lock model in RAM (prevent swap)
