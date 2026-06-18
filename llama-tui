@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""
+llama-tui — Simple GGUF model picker + llama-server launcher
+★(◕‿◕)ノ
+"""
+
+import os
+import sys
+import subprocess
+import signal
+import time
+import yaml
+
+# ─── Paths ──────────────────────────────────────────────
+GGUF_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(GGUF_DIR, "config.yaml")
+LLAMA_SERVER = os.path.expanduser("~/App/llama-cpp/llama-b9656/llama-server")
+
+# ─── Load config ────────────────────────────────────────
+def load_config():
+    with open(CONFIG_PATH) as f:
+        return yaml.safe_load(f)
+
+# ─── Find GGUF models ───────────────────────────────────
+def find_models():
+    models = []
+    for root, dirs, files in os.walk(GGUF_DIR):
+        # Skip hidden dirs
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        for f in sorted(files):
+            if f.endswith('.gguf') and not f.startswith('mmproj'):
+                path = os.path.join(root, f)
+                rel = os.path.relpath(path, GGUF_DIR)
+                size_gb = os.path.getsize(path) / (1024**3)
+                models.append((path, rel, size_gb))
+    return models
+
+# ─── Find mmproj near model ─────────────────────────────
+def find_mmproj(model_path):
+    model_dir = os.path.dirname(model_path)
+    for f in sorted(os.listdir(model_dir)):
+        if f.endswith('.gguf') and ('mmproj' in f or 'mmprj' in f):
+            return os.path.join(model_dir, f)
+    return None
+
+# ─── TUI ─────────────────────────────────────────────────
+def print_header():
+    os.system('clear' if os.name == 'posix' else 'cls')
+    print("╔══════════════════════════════════════╗")
+    print("║       ★ llama-tui ★  b9656          ║")
+    print("║    GGUF Model Picker + Server        ║")
+    print("╚══════════════════════════════════════╝")
+    print(f"  📁 {GGUF_DIR}\n")
+
+def show_menu(models):
+    print(f"  {'#':<3} {'Model':<55} {'Size':>8}")
+    print(f"  {'─'*3} {'─'*55} {'─'*8}")
+    for i, (path, rel, size) in enumerate(models, 1):
+        name = rel[:60]
+        print(f"  {i:<3} {name:<55} {size:>6.1f}GB")
+    print(f"  {'─'*3} {'─'*55} {'─'*8}")
+    print(f"\n  {len(models)+1}. ❌  Exit\n")
+
+def get_choice(max_choice):
+    while True:
+        try:
+            choice = input("  🔢 Pilih nomor [1-{}]: ".format(max_choice)).strip()
+            if not choice:
+                continue
+            n = int(choice)
+            if 1 <= n <= max_choice:
+                return n
+        except ValueError:
+            pass
+        print(f"  ⚠️  Masukin angka 1-{max_choice} ya~!")
+
+# ─── Launch server ──────────────────────────────────────
+def launch_server(cfg, model_path):
+    scfg = cfg['server']
+
+    # Build args
+    args = [
+        LLAMA_SERVER,
+        "-m", model_path,
+        "--host", scfg['host'],
+        "--port", str(scfg['port']),
+        "-ngl", str(scfg['ngl']),
+        "-c", str(scfg['ctx']),
+        "-t", str(scfg['threads']),
+        "--threads-batch", str(scfg['threads_batch']),
+        "--temp", str(scfg['temp']),
+        "--top-k", str(scfg['top_k']),
+        "--top-p", str(scfg['top_p']),
+    ]
+
+    if scfg.get('flash_attn'):
+        args += ["--flash-attn", "on"]
+    if scfg.get('no_kv_offload'):
+        args.append("--no-kv-offload")
+    if scfg.get('cache_type_k'):
+        args += ["--cache-type-k", scfg['cache_type_k']]
+    if scfg.get('cache_type_v'):
+        args += ["--cache-type-v", scfg['cache_type_v']]
+
+    if scfg.get('reasoning_budget') is not None:
+        args += ["--reasoning-budget", str(scfg['reasoning_budget'])]
+
+    # Auto mmproj
+    mmproj = find_mmproj(model_path)
+    mcfg = cfg.get('multimodal', {})
+    if mmproj and mcfg.get('mmproj') == 'auto':
+        args += ["--mmproj", mmproj]
+        print(f"  🖼️  Detected mmproj: {os.path.basename(mmproj)}")
+
+    # Env
+    env = os.environ.copy()
+    env['HSA_OVERRIDE_GFX_VERSION'] = '10.3.0'
+    env['LD_LIBRARY_PATH'] = '/home/raka/App/llama-cpp/llama-b9656:/opt/rocm-7.2.4/lib:' + env.get('LD_LIBRARY_PATH', '')
+
+    model_name = os.path.basename(os.path.dirname(model_path)) + "/" + os.path.basename(model_path)
+
+    print(f"\n  ╔══ ★ Server Starting ★ ═══════════════╗")
+    print(f"  ║  Model : {model_name:<35} ║")
+    print(f"  ║  GPU   : RX 6800 XT (16GB ROCm)     ║")
+    print(f"  ║  ngl   : {scfg['ngl']:<3} | ctx: {scfg['ctx']:<5}            ║")
+    print(f"  ║  Port  : {scfg['port']:<4}                         ║")
+    print(f"  ╚═══════════════════════════════════════╝")
+    print(f"\n  🌐 http://{scfg['host']}:{scfg['port']}/v1/chat/completions")
+    print(f"  📡 http://{scfg['host']}:{scfg['port']}/metrics")
+    print(f"\n  Press Ctrl+C to stop server\n")
+
+    sys.stdout.flush()
+
+    try:
+        proc = subprocess.Popen(
+            args,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        # Stream output
+        for line in proc.stdout:
+            print(f"  {line}", end='')
+            sys.stdout.flush()
+
+        proc.wait()
+    except KeyboardInterrupt:
+        print("\n\n  ⏹️  Server stopped~! ★")
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except:
+            proc.kill()
+
+# ─── Main ───────────────────────────────────────────────
+def main():
+    cfg = load_config()
+
+    while True:
+        models = find_models()
+
+        if not models:
+            print_header()
+            print("  ❌  No GGUF models found in:\n")
+            print(f"     {GGUF_DIR}")
+            print("\n  Taruh model .gguf di folder ini, lalu jalankan ulang~!\n")
+            sys.exit(1)
+
+        print_header()
+        show_menu(models)
+        choice = get_choice(len(models) + 1)
+
+        if choice == len(models) + 1:
+            print("\n  ★ Sampai jumpa~! ヽ(>∀<☆)ノ\n")
+            sys.exit(0)
+
+        model_path = models[choice - 1][0]
+        model_rel = models[choice - 1][1]
+        launch_server(cfg, model_path)
+
+        # After server stops, prompt to go back to menu
+        print("\n  🔄 Back to model list? (y/n): ", end='')
+        try:
+            again = input().strip().lower()
+            if again not in ('y', 'yes', ''):
+                break
+        except (EOFError, KeyboardInterrupt):
+            break
+
+    print("\n  ★ Sampai jumpa~! ヽ(>∀<☆)ノ\n")
+
+
+if __name__ == '__main__':
+    main()

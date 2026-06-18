@@ -1,0 +1,26 @@
+# ═══════════════════════════════════════════════
+# llama-tui config — optimized for Raka's RX 6800 XT (16GB)
+# ═══════════════════════════════════════════════
+
+# Hardware: Ryzen 5600G (6C/12T) + Radeon RX 6800 XT (16GB VRAM) + ROCm 7.2.4
+server:
+  host: 127.0.0.1            # localhost only (lebih aman)
+  port: 8080
+  ngl: 999                   # all layers to GPU
+  ctx: 4096
+  threads: 8
+  threads_batch: 8
+  temp: 0.7
+  top_k: 40
+  top_p: 0.95
+  no_kv_offload: true        # KV cache di CPU — hemat VRAM
+  flash_attn: true
+  cache_type_k: q4_0
+  cache_type_v: q4_0
+  reasoning_budget: 0        # nonaktifkan reasoning budget
+
+multimodal:
+  mmproj: auto               # auto-detect mmproj-*.gguf
+
+ui:
+  max_name_len: 60

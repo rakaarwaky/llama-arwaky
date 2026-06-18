@@ -1,0 +1,32 @@
+# ─── llama-arwaky .gitignore ─────────────────────────────
+
+# GGUF model files (terlalu besar untuk GitHub)
+*.gguf
+
+# llama.cpp binary build (llama-b9656/)
+llama-b9656/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
