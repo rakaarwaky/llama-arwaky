@@ -10,7 +10,7 @@ server:
   host: 127.0.0.1
   port: 8080
   ngl: 999
-  ctx: 8192                  # Gemma-4 supports long context
+  ctx: 200000                  # Gemma-4 supports long context
   threads: 8
   threads_batch: 8
   temp: 0.7
@@ -20,7 +20,7 @@ server:
   flash_attn: true
   cache_type_k: q4_0
   cache_type_v: q4_0
-  reasoning_budget: 0
+  reasoning_budget: 32000
 
 multimodal:
   mmproj: auto               # auto-picks mmproj-gemma-4-12B-it-QAT-BF16.gguf

@@ -19,6 +19,7 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import (
+    Button,
     DataTable,
     Footer,
     Header,
@@ -81,6 +82,17 @@ Screen {
     margin: 0 1;
     border: tall $accent 30%;
     padding: 0 1;
+}
+
+#copy-bar {
+    height: auto;
+    padding: 0 1;
+    background: $surface-darken-1;
+    border-top: solid $accent 40%;
+}
+
+#copy-bar Button {
+    width: auto;
 }
 
 #url-bar {
@@ -185,6 +197,7 @@ class ServerScreen(Screen):
         Binding("q,escape", "back", "Stop & Back", show=True),
         Binding("ctrl+c", "back", "Stop Server", show=False),
         Binding("b", "open_browser", "Open Browser", show=True),
+        Binding("c", "copy_logs", "Copy Logs", show=True),
     ]
 
     def __init__(
@@ -200,6 +213,7 @@ class ServerScreen(Screen):
         self._proc:          asyncio.subprocess.Process | None = None
         self._server_url:    str = ""
         self._server_ready:  bool = False
+        self._log_buffer: list[str] = []
 
     # ── Layout ───────────────────────────────────────────
 
@@ -216,6 +230,8 @@ class ServerScreen(Screen):
                 f"[bold cyan]temp[/] {scfg['temp']}"
             )
         yield RichLog(id="server-log", highlight=True, markup=False, wrap=True)
+        with Horizontal(id="copy-bar"):
+            yield Button("📋  Copy Logs", id="copy-btn", variant="primary")
         # URL bar — hidden until server is ready
         with Container(id="url-bar"):
             yield Static("✅  Server Ready", id="url-main")
@@ -292,6 +308,7 @@ class ServerScreen(Screen):
         async for raw in proc.stdout:
             line = raw.decode(errors="replace").rstrip()
             log.write(line)
+            self._log_buffer.append(line)
             log.scroll_end(animate=False)
 
             if not self._server_ready and "HTTP server listening" in line:
@@ -335,6 +352,24 @@ class ServerScreen(Screen):
             pass
 
     # ── Actions ───────────────────────────────────────────
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "copy-btn":
+            self.action_copy_logs()
+
+    def action_copy_logs(self) -> None:
+        if not self._log_buffer:
+            self.notify("No logs to copy", severity="warning")
+            return
+        text = "\n".join(self._log_buffer)
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            self.notify("Logs copied to clipboard", severity="information")
+        except ImportError:
+            self.notify("Install pyperclip to use copy: pip install pyperclip", severity="error")
+        except Exception as e:
+            self.notify(f"Copy failed: {e}", severity="error")
 
     def action_back(self) -> None:
         if self._proc and self._proc.returncode is None:
