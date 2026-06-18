@@ -122,6 +122,34 @@ def get_choice(max_choice):
             pass
         print(f"  ⚠️  Masukin angka 1-{max_choice} ya~!")
 
+# ─── Clickable URL (OSC 8 terminal hyperlink) ──────────
+def link(url, text=None):
+    """Return a clickable OSC 8 hyperlink for terminals that support it."""
+    text = text or url
+    return f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
+
+def print_ready_banner(host, port):
+    url_chat    = f"http://{host}:{port}"
+    url_api     = f"http://{host}:{port}/v1/chat/completions"
+    url_metrics = f"http://{host}:{port}/metrics"
+    print()
+    print(f"  ╔══ ✅ Server Ready ══════════════════════╗")
+    print(f"  ║  {link(url_chat,    '🌐 Open in Browser      → ' + url_chat):<}")
+    print(f"  ║  {link(url_api,     '🔗 API endpoint         → ' + url_api):<}")
+    print(f"  ║  {link(url_metrics, '📡 Metrics              → ' + url_metrics):<}")
+    print(f"  ╚════════════════════════════════════════╝")
+    print()
+    sys.stdout.flush()
+    # Auto-open browser (fire-and-forget, ignore errors)
+    try:
+        subprocess.Popen(
+            ["xdg-open", url_chat],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
 # ─── Launch server ──────────────────────────────────────
 def launch_server(cfg, model_path, cfg_name="default.yaml"):
     scfg = cfg['server']
@@ -196,9 +224,14 @@ def launch_server(cfg, model_path, cfg_name="default.yaml"):
             bufsize=1,
         )
 
+        server_ready = False
         for line in proc.stdout:
             print(f"  {line}", end='')
             sys.stdout.flush()
+            # Detect when server is actually listening
+            if not server_ready and 'HTTP server listening' in line:
+                server_ready = True
+                print_ready_banner(scfg['host'], scfg['port'])
 
         proc.wait()
     except KeyboardInterrupt:
